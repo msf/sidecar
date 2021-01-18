@@ -1,0 +1,81 @@
+2021-01-18 TODO:
+- how to handle gRPC ?
+- unit tests and end2end tests
+
+
+2021-01-15 TODO:
+- More clear task breakdown of dependencies to run prototype in staging
+ - infra needs/dependencies
+ - split the workstreams: cluster autoscaling, deployment autoscaling, separate task-lists
+ - how to test in staging w/ real maestro codebase
+ - clarify roadmap for gRPC
+ - lets start w/ shared doc
+
+
+
+2021-01-12 TODO:
+- R. will bootstrap k8s for staging2, v1.16 or v1.17 because keda2.0 needs that.
+    we'll sync again on friday on how the cluster is
+- x Miguel will work on multi-web deployments w/ different Hostnames (like maestro deployments)
+    x change namespace for prototype code not collide w/ prod code
+    x multi deployments: pt-en, en-pt (keda), en-es (knative)
+- x Miguel will try again knative, just one more time
+- x Knative, single slide of downsides and problems found
+    /k8s/knative.md (and /k8s/keda.md)
+
+2021-01-10 TODO:
+x simplified sidecar working
+x [OK] test simplified sidecar latency profile
+- multiple web deployments w/ different "Host"
+x scale from 1 to 100
+  [was a ch.Qos() not being set, we need to set prefetch]
+- allow for concurrency on receiver side.
+  - and tune the prefetch accordingly
+  - test for very fast web endpoints
+
+
+go full on k8s:
+x rabbitmq
+x put "web" on k8s, it has 2 endpoints already
+x put "sidecar" on k8s, next to "web"
+x put "sender" on k8s
+x add sender + http support
+x put "web" w/ concurrency=1 (using channel and single go routine)
+x test vanila sender + web w/ http, get latencies (at 2-3rps)
+x put sender w/ callback support and block for callback to track latencies
+x test sender + sidecar + web, get latencies (at 2-3rps)
+-- CHECKPOINT: baseline numbers, concurrency=1
+x   DONE, perf is indistinguishable without autoscaling and such heavy requests
+
+- install KEDA and configure on k8s
+- configure KEDA for "web", scale to zero!
+- add delays to web:  (startup 10secs)
+- validate basic behaviour.
+-- CHECKPOINT: basic behaviour
+    - time to scale to zero?
+    as per cooldown parameter, we see some spurious, non-intended scaledowns too.
+    needs further investigation.
+    - time to scale to 1?
+    pooling loop, which can be 5 secs, which is great!
+
+    - how long it took to get it working?
+    very fast, single evening installing and creating yaml definition for rabbitMQ
+
+    - for later: what about HPA on CPU ?
+    there was short attempt at HPA based on queue messages, not successfull, needs investigation
+    - for later: sidecar for gRPC?
+    nothing was done
+
+NOTES FROM J.:
+- business value clarified
+- execution plan for rollout
+
+NOTES from B.:
+- will work on horizontal cluster scaling, new EKS staging deployment (this will be simpler and better than doing this on the current cluster)
+- better to keep it simple and bet on KEDA, enough things to work.
+
+
+NOTE ON LATENCY TESTS:
+what we want to have is some crude baseline of the performance profile without keda/knative w/ http and w/ sidecar
+we want to limit concurrency=1 because that is the ideal case for maestro, so we want to test how these systems behave in that situation
+

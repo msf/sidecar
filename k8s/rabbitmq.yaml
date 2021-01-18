@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management
+          ports:
+            - name: amqp-port
+              containerPort: 5672
+            - name: mgmt-port
+              containerPort: 15672
+            - name: metrics
+              containerPort: 15692
+          # THIS IS NOT SAFE FOR PROD USE
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: guest
+            - name: RABBITMQ_DEFAULT_PASS
+              value: guest
+            - name: RABBITMQ_VM_MEMORY_HIGH_WATERMARK
+              value: 70%
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+            requests:
+              cpu: "0.5"
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: storage
+spec:
+  ports:
+    - name: amqp-port
+      port: 5672
+      targetPort: amqp-port
+      protocol: TCP
+    - name: mgmt-port
+      port: 15672
+      targetPort: mgmt-port
+      protocol: TCP
+  selector:
+    app: rabbitmq

@@ -1,0 +1,50 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: en-es
+  namespace: sidecar
+  labels:
+    # not a public service!
+    serving.knative.dev/visibility: cluster-local
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/target: "1"  # ideal request concurrency
+    spec:
+      containers:
+        - name: en-es
+          image: localhost:32000/sidecar@sha256:3004856997db630bc25298cb9fa02f9806dac2939955d093c9b0ccdd4addde79
+          imagePullPolicy: Always
+          args:
+            - '/app/web'
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: 100Mi
+              ephemeral-storage: 1Gi
+            requests:
+              cpu: "0.1"
+              memory: 100Mi
+              ephemeral-storage: 1Gi
+        - name: sidecar
+          image: localhost:32000/sidecar@sha256:3004856997db630bc25298cb9fa02f9806dac2939955d093c9b0ccdd4addde79
+          imagePullPolicy: Always
+          args:
+            - '/app/sidecar'
+          env:
+            - name: QUEUE_NAME
+              value: en-es
+            - name: RABBITMQ_URL
+              value: amqp://guest:guest@rabbitmq.storage.svc.cluster.local:5672
+            - name: WEB_URL
+              value: http://localhost:8080
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: 100Mi
+            requests:
+              cpu: "0.1"
+              memory: 50Mi

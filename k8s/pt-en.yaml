@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pt-en
+  namespace: sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pt-en
+  template:
+    metadata:
+      labels:
+        app: pt-en
+    spec:
+      containers:
+        - name: pt-en
+          image: localhost:32000/sidecar:latest
+          imagePullPolicy: Always
+          args:
+            - '/app/web'
+          ports:
+            - name: web-port
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: 100Mi
+              ephemeral-storage: 1Gi
+            requests:
+              cpu: "0.1"
+              memory: 100Mi
+              ephemeral-storage: 1Gi
+        - name: sidecar
+          image: localhost:32000/sidecar:latest
+          imagePullPolicy: Always
+          args:
+            - '/app/sidecar'
+          env:
+            - name: QUEUE_NAME
+              value: pt-en
+            - name: RABBITMQ_URL
+              value: amqp://guest:guest@rabbitmq.storage.svc.cluster.local:5672
+            - name: WEB_URL
+              value: http://localhost:8080
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: 50Mi
+            requests:
+              cpu: "0.05"
+              memory: 50Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pt-en
+  namespace: sidecar
+spec:
+  ports:
+    - name: web-port
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: pt-en
