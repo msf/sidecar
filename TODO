@@ -1,3 +1,10 @@
+2021-01-31 TODO:
+- integration test w/ rabbitmq (docker-compose)
+- test producer/consumer both autocreate queue
+- handle rabbitmq disconnects/restarts
+    - need to test this manually, how to automate?
+- producer has optional timeout
+
 2021-01-18 TODO:
 - how to handle gRPC ?
 - unit tests and end2end tests

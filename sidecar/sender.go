@@ -33,6 +33,8 @@ type SenderRequest struct {
 	ContentType string
 	// ID is required for Sender to identify the response that is sent in a different msg queue
 	ID string
+	// Timeout for request/response to complete
+	Timeout time.Duration
 }
 
 type SenderResponse struct {
@@ -85,12 +87,30 @@ func (s *sender) Do(req SenderRequest) (*SenderResponse, error) {
 	}
 	log.Printf(" [w] Do() [%v]/%v req %v, body: %v bytes, waiting for reply\n", req.Host, req.Path, req.ID, len(req.Body))
 
-	resp := <-ch
+	resp := waitForResponse(ch, req.Timeout)
+	if resp == nil {
+		return nil, fmt.Errorf("timedout after %v waiting for %v response", req.Timeout, req.ID)
+	}
 	log.Printf(" [y] Do() req %v, reply: %v bytes\n", req.ID, len(resp.Body))
 	return &SenderResponse{
 		StatusCode: resp.StatusCode,
 		Body:       resp.Body,
 	}, resp.Err
+}
+
+func waitForResponse(ch chan<- mailbox.Response, timeout time.Duration) *mailbox.Response {
+	var resp mailbox.Response
+	if timeout <= 0 {
+		resp = <-ch
+		return &resp
+	}
+
+	select {
+	case resp = <-ch:
+		return &resp
+	case <-time.After(timeout):
+		return nil
+	}
 }
 
 func (s *sender) ConsumeReplyQueueLoop() {
@@ -99,7 +119,7 @@ func (s *sender) ConsumeReplyQueueLoop() {
 	for reply := range replies {
 		ch, err := s.mailbox.GetChannel(reply.MessageId)
 		if err != nil {
-			err := errors.Wrapf(err, "ERROR on mailbox.GetChannel for reply %+v", reply)
+			err := errors.Wrapf(err, "ERROR on mailbox.GetChannel for reply %+v, timedout?", reply)
 			log.Print(err)
 			continue
 		}
