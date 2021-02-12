@@ -20,17 +20,25 @@ type output struct {
 	ID          string
 }
 
+type Receiver interface {
+	Close()
+	ServeRequestsLoop()
+}
+
 type receiver struct {
+	// connection to RabbitMQ
+	conn *amqp.Connection
 	// queue to consume from
 	queueName string
-
 	// webserver endpoint to send requests to
 	webEndpoint string
 
-	// channel to give work to the replier
-	outputQueue chan *output
+	// receiver uses a goroutine to handle resplying back to rabbitMQ
+	// replierQueue is the internal work queue for it
+	replierQueue chan *output
 
-	conn *amqp.Connection
+	// closure of this channel signals for all go-routines to terminate
+	close chan struct{}
 }
 
 // send a reply back based on output
@@ -80,10 +88,10 @@ func reply(ch *amqp.Channel, out *output) {
 	}
 }
 
-// ProcessRequestsLoop, for better performance/concurrency uses two go routines.
+// ServeRequestsLoop, for better performance/concurrency uses two go routines.
 // - one for receiving the requests and issuing them against the webEndpoint
 // - another for reading the server output and forwarding that out to rabbitMQ
-func (recv *receiver) ProcessRequestsLoop() {
+func (recv *receiver) ServeRequestsLoop() {
 	channel, msgQueue, err := ConsumeFromRabbitMQ(recv.conn, recv.queueName)
 	FailOnError(err, "Failed to register a consumer")
 	defer channel.Close()
@@ -91,31 +99,48 @@ func (recv *receiver) ProcessRequestsLoop() {
 	log.Printf(" [*] Waiting for messages on (%v), forwarding to: %v. To exit press CTRL+C",
 		recv.queueName, recv.webEndpoint)
 	go func() {
-		for o := range recv.outputQueue {
-			reply(channel, o)
+		for {
+			select {
+			case o := <-recv.replierQueue:
+				reply(channel, o)
+			case <-recv.close:
+				log.Printf(" [*] responder goroutine terminating")
+				return
+			}
 		}
 	}()
 
 	// queue consumer loop
 	client := http.Client{}
-	for d := range msgQueue {
-		log.Printf("Received a message: %v, body len: %v", d.MessageId, len(d.Body))
-		reqPath := d.AppId
-		// reqMethod := d.Type // FIXME: support GET/PUT/...
-		r, err := client.Post(recv.webEndpoint+reqPath, d.ContentType, bytes.NewReader(d.Body))
-		recv.outputQueue <- &output{
-			Response:    r,
-			Err:         err,
-			DeliveryTag: d.DeliveryTag,
-			ReplyTo:     d.ReplyTo,
-			ID:          d.MessageId,
+LOOP:
+	for {
+		select {
+		case <-recv.close:
+			log.Printf(" [*] receiver gorouting terminating.")
+			close(recv.replierQueue)
+			break LOOP
+		case d := <-msgQueue:
+			log.Printf("Received a message: %v, body len: %v", d.MessageId, len(d.Body))
+			reqPath := d.AppId
+			// reqMethod := d.Type // FIXME: support GET/PUT/...
+			r, err := client.Post(recv.webEndpoint+reqPath, d.ContentType, bytes.NewReader(d.Body))
+			recv.replierQueue <- &output{
+				Response:    r,
+				Err:         err,
+				DeliveryTag: d.DeliveryTag,
+				ReplyTo:     d.ReplyTo,
+				ID:          d.MessageId,
+			}
+
 		}
 	}
-	log.Printf("finished consumption\n")
+	log.Printf(" [DONE] finished consumption\n")
 }
 
+// Close releases all receiver resources
 func (recv *receiver) Close() {
 	recv.conn.Close()
+	close(recv.close)
 }
 
 func NewReceiver(rabbitmqURL, queueName, webEndpoint string) (*receiver, error) {
@@ -126,9 +151,10 @@ func NewReceiver(rabbitmqURL, queueName, webEndpoint string) (*receiver, error) 
 
 	log.Printf("NewReceiver(rabbitMQ: %v, queueName: %v)\n", rabbitmqURL, queueName)
 	return &receiver{
-		queueName:   queueName,
-		webEndpoint: webEndpoint,
-		outputQueue: make(chan *output),
-		conn:        conn,
+		queueName:    queueName,
+		webEndpoint:  webEndpoint,
+		replierQueue: make(chan *output),
+		close:        make(chan struct{}),
+		conn:         conn,
 	}, nil
 }

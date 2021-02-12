@@ -63,10 +63,6 @@ func ConsumeFromRabbitMQ(conn *amqp.Connection, queueName string) (*amqp.Channel
 	return ch, queue, err
 }
 
-func SendGrpc() {
-	// TODO: implement this
-}
-
 func FailOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)

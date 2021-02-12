@@ -26,7 +26,7 @@ func main() {
 	recv, err := sidecar.NewReceiver(*rabbitmqURL, *queueName, *webURL)
 	sidecar.FailOnError(err, "cannot start sidecar.Receiver")
 
-	recv.ProcessRequestsLoop()
+	recv.ServeRequestsLoop()
 }
 
 func usageFor(fs *flag.FlagSet, short string) func() {

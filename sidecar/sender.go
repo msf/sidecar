@@ -26,15 +26,30 @@ type sender struct {
 
 // SenderRequest mimmicks the data needed for doing an HTTP request
 type SenderRequest struct {
+	// fields mimmick their HTTP equivalents
 	Host        string
 	Method      string
 	Path        string
 	Body        []byte
 	ContentType string
+
 	// ID is required for Sender to identify the response that is sent in a different msg queue
 	ID string
 	// Timeout for request/response to complete
 	Timeout time.Duration
+}
+
+func (req *SenderRequest) HasError() error {
+	if req.ID == "" {
+		return errors.New("must have ID")
+	}
+	if req.Host == "" {
+		return errors.New("must have Host")
+	}
+	if req.Path == "" {
+		return errors.New("must have Path")
+	}
+	return nil
 }
 
 type SenderResponse struct {
@@ -53,7 +68,9 @@ type Sender interface {
 }
 
 func (s *sender) Do(req SenderRequest) (*SenderResponse, error) {
-	//TODO: validate req has mandatory fields w/ data
+	if err := req.HasError(); err != nil {
+		return nil, errors.Wrapf(err, "Sender.Do(), invalid req: %+v", req)
+	}
 	ch, err := s.mailbox.Register(req.ID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Sender.Do() requires unique id")
@@ -98,7 +115,7 @@ func (s *sender) Do(req SenderRequest) (*SenderResponse, error) {
 	}, resp.Err
 }
 
-func waitForResponse(ch chan<- mailbox.Response, timeout time.Duration) *mailbox.Response {
+func waitForResponse(ch <-chan mailbox.Response, timeout time.Duration) *mailbox.Response {
 	var resp mailbox.Response
 	if timeout <= 0 {
 		resp = <-ch
