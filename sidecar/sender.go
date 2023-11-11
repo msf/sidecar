@@ -1,15 +1,16 @@
 package sidecar
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/msf/sidecar/mailbox"
 )
@@ -88,7 +89,8 @@ func (s *sender) Do(req SenderRequest) (*SenderResponse, error) {
 		Type:        req.Method,
 		AppId:       req.Path,
 	}
-	err = s.rabbitmq.Publish(
+	err = s.rabbitmq.PublishWithContext(
+		context.TODO(),
 		"",       // exchange
 		req.Host, // routing key
 		false,    // mandatory
@@ -160,7 +162,7 @@ func (s *sender) HandleWeb(w http.ResponseWriter, r *http.Request) {
 	defer func(startTime time.Time) {
 		log.Printf(" [x] ENQUEUE req %v END %v microsecs", uid, time.Since(startTime).Microseconds())
 	}(time.Now())
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(500)
 		msg := fmt.Sprintf(" ERROR on ReadAll(r.Body) err: %v, r: %+v", err, r)

@@ -2,14 +2,15 @@ package sidecar
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/pkg/errors"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type output struct {
@@ -54,7 +55,7 @@ func reply(ch *amqp.Channel, out *output) {
 		responseMsg.Body = []byte(out.Err.Error())
 		responseMsg.Type = strconv.Itoa(599)
 	} else {
-		body, err = ioutil.ReadAll(out.Response.Body)
+		body, err = io.ReadAll(out.Response.Body)
 		LogOnError(err, "Read Response.Body: "+out.ID)
 		out.Response.Body.Close()
 		responseMsg.Body = body
@@ -62,7 +63,8 @@ func reply(ch *amqp.Channel, out *output) {
 	}
 	// We use an ephemeral callback queue instead of an HTTP callback
 	// see https://www.rabbitmq.com/direct-reply-to.html
-	err = ch.Publish(
+	err = ch.PublishWithContext(
+		context.TODO(),
 		"",
 		out.ReplyTo,
 		false, // mandatory
@@ -151,6 +153,7 @@ func NewReceiver(rabbitmqURL, queueName, webEndpoint string) (*receiver, error) 
 
 	log.Printf("NewReceiver(rabbitMQ: %v, queueName: %v)\n", rabbitmqURL, queueName)
 	return &receiver{
+
 		queueName:    queueName,
 		webEndpoint:  webEndpoint,
 		replierQueue: make(chan *output),
